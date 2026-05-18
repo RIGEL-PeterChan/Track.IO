@@ -1,0 +1,6 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: #f4f7fd; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+a { color: inherit; }
