@@ -14,6 +14,14 @@ import {
 
 const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
+// ── Post counting helpers ─────────────────────────────────────
+// Each platform selected on a content item = 1 post.
+// postCount(item)  → number of posts this item represents
+// postsCompleted   → posts marked done (item.completed × platform count)
+const postCount    = item => Math.max(1, (item.platforms||[]).length)
+const postsTotal   = items => items.reduce((s, c) => s + postCount(c), 0)
+const postsDone    = items => items.filter(c => c.completed).reduce((s, c) => s + postCount(c), 0)
+
 // ── Content form ─────────────────────────────────────────────
 function ContentForm({ initial, onSave, onClose }) {
   const empty = { platforms:[], postingDate:'', caption:'', materials:[], remarks:'', postedLinks:[], completed:false }
@@ -82,6 +90,13 @@ function ContentCard({ item, onToggle, onEdit, onDelete }) {
             ))}
             {item.postingDate && (
               <span style={{ fontSize:10, color:'#94a3b8', alignSelf:'center' }}>📅 {item.postingDate}</span>
+            )}
+            {platforms.length > 0 && (
+              <span style={{ fontSize:10, background: item.completed ? '#dcfce7' : '#f1f5f9',
+                color: item.completed ? '#15803d' : '#64748b',
+                borderRadius:4, padding:'1px 6px', fontWeight:700, whiteSpace:'nowrap' }}>
+                {platforms.length} post{platforms.length!==1?'s':''}
+              </span>
             )}
           </div>
           {item.caption && (
@@ -206,11 +221,11 @@ function MonthGrid({ year, month, content, onDayClick }) {
 
       {/* Weeks */}
       {weeks.map((week, wi) => {
-        // Count completed items in this week row
-        const weekDays = week.filter(Boolean)
+        // Count posts (platform × item) for the whole week row
+        const weekDays  = week.filter(Boolean)
         const weekItems = weekDays.flatMap(d => dayMap[dateStr(d)]||[])
-        const done  = weekItems.filter(c=>c.completed).length
-        const total = weekItems.length
+        const wDone  = postsDone(weekItems)
+        const wTotal = postsTotal(weekItems)
 
         return (
           <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr) 80px',
@@ -222,8 +237,7 @@ function MonthGrid({ year, month, content, onDayClick }) {
               )
               const key   = dateStr(day)
               const items = dayMap[key]||[]
-              const done  = items.filter(c=>c.completed).length
-              const hasContent = items.length > 0
+              const dDone = postsDone(items)   // posts done on this day
 
               return (
                 <div key={di} onClick={()=>onDayClick(key)}
@@ -243,43 +257,47 @@ function MonthGrid({ year, month, content, onDayClick }) {
                       borderRadius:'50%', width:24, height:24,
                       display:'flex', alignItems:'center', justifyContent:'center'
                     }}>{day}</span>
-                    {done>0 && (
+                    {dDone>0 && (
                       <span style={{ fontSize:9, fontWeight:700, color:'#16a34a',
-                        background:'#f0fdf4', borderRadius:8, padding:'1px 5px' }}>✓{done}</span>
+                        background:'#f0fdf4', borderRadius:8, padding:'1px 5px' }}>✓{dDone}</span>
                     )}
                   </div>
 
-                  {/* Content pills — show up to 3 */}
-                  {items.slice(0,3).map((item,i)=>{
-                    const plat = PLATFORMS.find(p=>(item.platforms||[]).includes(p.key))
-                    return (
-                      <div key={i} style={{
-                        fontSize:10, lineHeight:1.3, marginBottom:3, padding:'2px 5px',
-                        borderRadius:4, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-                        background: item.completed ? '#dcfce7' : BRAND_PALE,
-                        color:      item.completed ? '#15803d' : BRAND,
-                        textDecoration: item.completed ? 'line-through' : 'none',
-                        opacity: item.completed ? 0.8 : 1
-                      }}>
-                        {plat ? plat.label.split('·')[1]?.trim() || plat.label : ''}
-                        {item.caption ? ` — ${item.caption.slice(0,20)}` : ''}
-                      </div>
-                    )
-                  })}
-                  {items.length>3 && (
-                    <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>+{items.length-3} more</div>
+                  {/* Content pills — one pill per platform per item */}
+                  {items.flatMap((item, ii) =>
+                    (item.platforms||[item]).map((platKey, pi) => {
+                      const plat = typeof platKey==='string'
+                        ? PLATFORMS.find(p=>p.key===platKey)
+                        : PLATFORMS.find(p=>(item.platforms||[]).includes(p.key))
+                      return (
+                        <div key={`${ii}-${pi}`} style={{
+                          fontSize:10, lineHeight:1.3, marginBottom:2, padding:'2px 5px',
+                          borderRadius:4, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                          background: item.completed ? '#dcfce7' : BRAND_PALE,
+                          color:      item.completed ? '#15803d' : BRAND,
+                          textDecoration: item.completed ? 'line-through' : 'none',
+                          opacity: item.completed ? 0.8 : 1
+                        }}>
+                          {plat ? plat.label.split('·')[1]?.trim()||plat.label : '—'}
+                          {item.caption ? ` ${item.caption.slice(0,15)}` : ''}
+                        </div>
+                      )
+                    })
+                  ).slice(0,4)}
+                  {postsTotal(items)>4 && (
+                    <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>+{postsTotal(items)-4} more</div>
                   )}
                 </div>
               )
             })}
 
-            {/* KPI cell */}
+            {/* KPI cell — posts done / total posts */}
             <div style={{ minHeight:90, display:'flex', flexDirection:'column',
               alignItems:'center', justifyContent:'center', padding:6,
-              background: done>0 ? '#f0fdf4' : '#fafbfc',
+              background: wDone>0 ? '#f0fdf4' : '#fafbfc',
               borderLeft:'1px solid #f1f5f9' }}>
-              <div style={{ fontSize:18, fontWeight:800, color: done>0 ? '#16a34a' : '#cbd5e1' }}>{done}</div>
-              <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>/{total}</div>
+              <div style={{ fontSize:18, fontWeight:800, color: wDone>0 ? '#16a34a' : '#cbd5e1' }}>{wDone}</div>
+              <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>/{wTotal}</div>
               <div style={{ fontSize:9, color:'#94a3b8', marginTop:2 }}>done</div>
             </div>
           </div>
@@ -341,17 +359,18 @@ export default function ContentCalendar({ content, setContent }) {
     setDayPopupDate(date)
   }
 
-  // KPI chip for week view
+  // KPI chip for week view — counts posts (platforms), not items
   function KpiChip({ w }) {
     const items = weekItems(w)
-    const done  = items.filter(c=>c.completed).length
+    const done  = postsDone(items)
+    const total = postsTotal(items)
     return (
       <div style={{ display:'inline-flex', alignItems:'center', gap:4,
         background: done>0 ? '#f0fdf4' : '#f8fafc',
         border:`1px solid ${done>0 ? '#86efac' : '#e2e8f0'}`,
         borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700,
         color: done>0 ? '#16a34a' : '#94a3b8' }}>
-        KPI ✓ {done}/{items.length}
+        KPI ✓ {done}/{total} posts
       </div>
     )
   }
@@ -418,9 +437,9 @@ export default function ContentCalendar({ content, setContent }) {
         <div>
           <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
             {[
-              { label:'Total',   val:monthItems.length,                           color:'#475569' },
-              { label:'✓ Done',  val:monthItems.filter(c=>c.completed).length,    color:'#16a34a' },
-              { label:'Pending', val:monthItems.filter(c=>!c.completed).length,   color:'#94a3b8' },
+              { label:'Total Posts',   val:postsTotal(monthItems),                        color:'#475569' },
+              { label:'✓ Done',        val:postsDone(monthItems),                         color:'#16a34a' },
+              { label:'Pending',       val:postsTotal(monthItems)-postsDone(monthItems),  color:'#94a3b8' },
             ].map(s=>(
               <div key={s.label} style={{ background:'#f8fafc', border:'1px solid #e2e8f0',
                 borderRadius:20, padding:'3px 12px', fontSize:12, color:s.color, fontWeight:600 }}>

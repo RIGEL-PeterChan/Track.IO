@@ -22,22 +22,23 @@ function weekToDate(year, month, week) {
 }
 
 // ── Task form (add / edit) ───────────────────────────────────
-function TaskForm({ initial, onSave, onClose, defaultYear, defaultMonth, defaultWeek }) {
-  const now        = new Date()
-  const initYear   = defaultYear  ?? now.getFullYear()
-  const initMonth  = defaultMonth ?? now.getMonth()
-  const initWeek   = defaultWeek  ?? getWeekOfMonth(now)
+function TaskForm({ initial, onSave, onClose }) {
+  // Always default to today's actual date/week — not the viewed month
+  const today      = new Date()
+  const todayYear  = today.getFullYear()
+  const todayMonth = today.getMonth()
+  const todayWeek  = getWeekOfMonth(today)
 
   const empty = { name:'', overview:'', sources:[], remarks:'', status:'pending' }
   const [form,      setForm]      = useState(initial || empty)
   const [taskYear,  setTaskYear]  = useState(
-    initial?.createdAt ? new Date(initial.createdAt).getFullYear() : initYear
+    initial?.createdAt ? new Date(initial.createdAt).getFullYear() : todayYear
   )
   const [taskMonth, setTaskMonth] = useState(
-    initial?.createdAt ? new Date(initial.createdAt).getMonth() : initMonth
+    initial?.createdAt ? new Date(initial.createdAt).getMonth() : todayMonth
   )
   const [taskWeek,  setTaskWeek]  = useState(
-    initial?.createdAt ? getWeekOfMonth(new Date(initial.createdAt)) : initWeek
+    initial?.createdAt ? getWeekOfMonth(new Date(initial.createdAt)) : todayWeek
   )
 
   const field = k => v => setForm(f=>({...f,[k]:v}))
@@ -318,8 +319,8 @@ export default function StatusTracker({ tasks, setTasks }) {
         </div>
       )}
 
-      {showForm && <Modal title="Add New Task"  onClose={()=>setShowForm(false)}><TaskForm onSave={addTask}  onClose={()=>setShowForm(false)} defaultYear={year} defaultMonth={month} defaultWeek={week}/></Modal>}
-      {editing   && <Modal title="Edit Task"    onClose={()=>setEditing(null)}>  <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)} defaultYear={year} defaultMonth={month} defaultWeek={week}/></Modal>}
+      {showForm && <Modal title="Add New Task"  onClose={()=>setShowForm(false)}><TaskForm onSave={addTask}  onClose={()=>setShowForm(false)}/></Modal>}
+      {editing   && <Modal title="Edit Task"    onClose={()=>setEditing(null)}>  <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/></Modal>}
     </div>
   )
 }

@@ -18,6 +18,30 @@ const MODULES = [
 const BRAND      = '#12357f'
 const BRAND_GOLD = '#f5c518'
 
+// ── Live clock ───────────────────────────────────────────────
+function LiveClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  const timeStr = now.toLocaleTimeString('en-MY', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true })
+  const dateStr = now.toLocaleDateString('en-MY', { weekday:'short', day:'numeric', month:'short', year:'numeric' })
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end',
+      borderLeft:'1px solid rgba(255,255,255,0.15)', paddingLeft:14, marginLeft:8 }}>
+      <span style={{ fontSize:14, fontWeight:700, color:'white', letterSpacing:'0.03em', lineHeight:1.2, fontVariantNumeric:'tabular-nums' }}>
+        {timeStr}
+      </span>
+      <span style={{ fontSize:10, color:'rgba(255,255,255,0.55)', fontWeight:500, letterSpacing:'0.03em' }}>
+        {dateStr}
+      </span>
+    </div>
+  )
+}
+
 function Logo() {
   return (
     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -71,13 +95,20 @@ export default function App() {
           ))}
         </nav>
 
-        {/* Sync dot */}
-        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
-          <div style={{ width:7, height:7, borderRadius:'50%', background: loading ? BRAND_GOLD : '#4ade80',
-            boxShadow: loading ? 'none' : '0 0 6px #4ade8099' }} />
-          <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontWeight:500, whiteSpace:'nowrap' }}>
-            {loading ? 'Loading…' : 'Live'}
-          </span>
+        {/* Right side: sync dot + live clock */}
+        <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+          {/* Sync indicator */}
+          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+            <div style={{ width:7, height:7, borderRadius:'50%', background: loading ? BRAND_GOLD : '#4ade80',
+              boxShadow: loading ? 'none' : '0 0 6px #4ade8099' }} />
+            <span style={{ fontSize:11, color:'rgba(255,255,255,0.5)', fontWeight:500, whiteSpace:'nowrap' }}>
+              {loading ? 'Loading…' : 'Live'}
+            </span>
+          </div>
+          {/* Live clock — hidden on very small screens */}
+          <div className="live-clock">
+            <LiveClock />
+          </div>
         </div>
 
         {/* Mobile hamburger */}
@@ -134,10 +165,12 @@ export default function App() {
         .desktop-nav { display: flex !important; }
         .mobile-menu-btn { display: none !important; }
         .mobile-nav { display: none !important; }
+        .live-clock { display: flex !important; }
         @media (max-width: 600px) {
           .desktop-nav { display: none !important; }
           .mobile-menu-btn { display: block !important; }
           .mobile-nav { display: flex !important; }
+          .live-clock { display: none !important; }
         }
       `}</style>
     </div>
