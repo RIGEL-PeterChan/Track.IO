@@ -1,7 +1,7 @@
 // ============================================================
 // ContentCalendar.jsx — Module 2
-// Social media content planning with week KPI counters,
-// multi-platform selection, and month/week/list views.
+// Social media content planning.
+// Views: Month (full calendar grid) | Week | List
 // ============================================================
 
 import { useState } from 'react'
@@ -11,6 +11,8 @@ import {
   uid, getWeekOfMonth, getWeeksInMonth,
   Modal, Input, LinksInput, MonthYearPicker, iconBtn
 } from '../components/ui.jsx'
+
+const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 // ── Content form ─────────────────────────────────────────────
 function ContentForm({ initial, onSave, onClose }) {
@@ -37,7 +39,7 @@ function ContentForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </div>
-      <Input label="Posting Date"     value={form.postingDate} onChange={field('postingDate')} placeholder="YYYY-MM-DD"/>
+      <Input label="Posting Date"      value={form.postingDate} onChange={field('postingDate')} placeholder="YYYY-MM-DD"/>
       <Input label="Content / Caption" value={form.caption}    onChange={field('caption')}    placeholder="Caption or content…" multiline/>
       <LinksInput label="Source Files / Materials" links={form.materials}   onChange={field('materials')}/>
       <Input label="Remarks"           value={form.remarks}    onChange={field('remarks')}    placeholder="Notes…" multiline/>
@@ -55,7 +57,7 @@ function ContentForm({ initial, onSave, onClose }) {
   )
 }
 
-// ── Content card ─────────────────────────────────────────────
+// ── Content card (used in week + list views) ─────────────────
 function ContentCard({ item, onToggle, onEdit, onDelete }) {
   const [expanded, setExpanded] = useState(false)
   const platforms = PLATFORMS.filter(p=>(item.platforms||[]).includes(p.key))
@@ -65,7 +67,6 @@ function ContentCard({ item, onToggle, onEdit, onDelete }) {
       borderRadius:10, padding:'11px 13px', marginBottom:7,
       borderLeft:`3px solid ${item.completed ? '#16a34a' : BRAND}` }}>
       <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
-        {/* Checkbox */}
         <button onClick={()=>onToggle(item.id)}
           style={{ flexShrink:0, width:22, height:22, borderRadius:6, marginTop:1,
             border:`2px solid ${item.completed ? '#16a34a' : '#cbd5e1'}`,
@@ -133,14 +134,171 @@ function ContentCard({ item, onToggle, onEdit, onDelete }) {
   )
 }
 
+// ── Day cell popup (shown when clicking a day in month grid) ──
+function DayPopup({ date, items, onToggle, onEdit, onDelete, onAdd, onClose }) {
+  const d = new Date(date + 'T00:00:00')
+  const label = d.toLocaleDateString('en-MY', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
+  return (
+    <Modal title={label} onClose={onClose} wide>
+      <div style={{ marginBottom:14 }}>
+        <button onClick={onAdd}
+          style={{ padding:'8px 16px', borderRadius:8, border:'none',
+            background:BRAND, color:'white', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+          + Add Content for this day
+        </button>
+      </div>
+      {items.length===0 && (
+        <div style={{ textAlign:'center', padding:'24px 0', color:'#94a3b8', fontSize:13 }}>
+          No content scheduled for this day.
+        </div>
+      )}
+      {items.map(item=>(
+        <ContentCard key={item.id} item={item}
+          onToggle={onToggle} onEdit={onEdit} onDelete={onDelete}/>
+      ))}
+    </Modal>
+  )
+}
+
+// ── Month calendar grid ───────────────────────────────────────
+function MonthGrid({ year, month, content, onDayClick }) {
+  const firstDow  = new Date(year, month, 1).getDay()   // 0=Sun
+  const totalDays = new Date(year, month+1, 0).getDate()
+  const today     = new Date()
+  const isToday   = (d) => today.getFullYear()===year && today.getMonth()===month && today.getDate()===d
+
+  // Build map: "YYYY-MM-DD" -> items[]
+  const dayMap = {}
+  content.forEach(c => {
+    if (!c.postingDate) return
+    const d = new Date(c.postingDate)
+    if (d.getFullYear()===year && d.getMonth()===month) {
+      const key = c.postingDate.slice(0,10)
+      if (!dayMap[key]) dayMap[key] = []
+      dayMap[key].push(c)
+    }
+  })
+
+  // Build grid cells: nulls for leading empty days, then 1..totalDays
+  const cells = [...Array(firstDow).fill(null), ...Array.from({length:totalDays},(_,i)=>i+1)]
+  // Pad to complete last row
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  // Split into weeks for KPI row
+  const weeks = []
+  for (let i=0; i<cells.length; i+=7) weeks.push(cells.slice(i,i+7))
+
+  function dateStr(d) {
+    return `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  }
+
+  return (
+    <div style={{ background:'white', border:'1px solid #e8eef8', borderRadius:12, overflow:'hidden' }}>
+      {/* Day headers */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr) 80px', background:BRAND }}>
+        {DAY_LABELS.map(d=>(
+          <div key={d} style={{ padding:'8px 0', textAlign:'center', fontSize:11,
+            fontWeight:700, color:'rgba(255,255,255,0.85)', letterSpacing:'0.06em' }}>{d}</div>
+        ))}
+        <div style={{ padding:'8px 0', textAlign:'center', fontSize:11,
+          fontWeight:700, color:'rgba(255,255,255,0.7)', letterSpacing:'0.06em' }}>KPI</div>
+      </div>
+
+      {/* Weeks */}
+      {weeks.map((week, wi) => {
+        // Count completed items in this week row
+        const weekDays = week.filter(Boolean)
+        const weekItems = weekDays.flatMap(d => dayMap[dateStr(d)]||[])
+        const done  = weekItems.filter(c=>c.completed).length
+        const total = weekItems.length
+
+        return (
+          <div key={wi} style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr) 80px',
+            borderTop: wi===0 ? 'none' : '1px solid #f1f5f9' }}>
+            {week.map((day, di) => {
+              if (!day) return (
+                <div key={di} style={{ minHeight:90, background:'#fafbfc',
+                  borderRight:'1px solid #f1f5f9', padding:6 }}/>
+              )
+              const key   = dateStr(day)
+              const items = dayMap[key]||[]
+              const done  = items.filter(c=>c.completed).length
+              const hasContent = items.length > 0
+
+              return (
+                <div key={di} onClick={()=>onDayClick(key, items)}
+                  style={{ minHeight:90, padding:'6px 7px', cursor:'pointer',
+                    borderRight:'1px solid #f1f5f9',
+                    background: isToday(day) ? '#f0f5ff' : 'white',
+                    transition:'background 0.12s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background= isToday(day)?'#e8f0fe':'#f8fafc'}
+                  onMouseLeave={e=>e.currentTarget.style.background= isToday(day)?'#f0f5ff':'white'}>
+
+                  {/* Day number */}
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                    <span style={{
+                      fontSize:13, fontWeight: isToday(day) ? 800 : 500,
+                      color: isToday(day) ? 'white' : '#374151',
+                      background: isToday(day) ? BRAND : 'transparent',
+                      borderRadius:'50%', width:24, height:24,
+                      display:'flex', alignItems:'center', justifyContent:'center'
+                    }}>{day}</span>
+                    {done>0 && (
+                      <span style={{ fontSize:9, fontWeight:700, color:'#16a34a',
+                        background:'#f0fdf4', borderRadius:8, padding:'1px 5px' }}>✓{done}</span>
+                    )}
+                  </div>
+
+                  {/* Content pills — show up to 3 */}
+                  {items.slice(0,3).map((item,i)=>{
+                    const plat = PLATFORMS.find(p=>(item.platforms||[]).includes(p.key))
+                    return (
+                      <div key={i} style={{
+                        fontSize:10, lineHeight:1.3, marginBottom:3, padding:'2px 5px',
+                        borderRadius:4, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                        background: item.completed ? '#dcfce7' : BRAND_PALE,
+                        color:      item.completed ? '#15803d' : BRAND,
+                        textDecoration: item.completed ? 'line-through' : 'none',
+                        opacity: item.completed ? 0.8 : 1
+                      }}>
+                        {plat ? plat.label.split('·')[1]?.trim() || plat.label : ''}
+                        {item.caption ? ` — ${item.caption.slice(0,20)}` : ''}
+                      </div>
+                    )
+                  })}
+                  {items.length>3 && (
+                    <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>+{items.length-3} more</div>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* KPI cell */}
+            <div style={{ minHeight:90, display:'flex', flexDirection:'column',
+              alignItems:'center', justifyContent:'center', padding:6,
+              background: done>0 ? '#f0fdf4' : '#fafbfc',
+              borderLeft:'1px solid #f1f5f9' }}>
+              <div style={{ fontSize:18, fontWeight:800, color: done>0 ? '#16a34a' : '#cbd5e1' }}>{done}</div>
+              <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>/{total}</div>
+              <div style={{ fontSize:9, color:'#94a3b8', marginTop:2 }}>done</div>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Main module ──────────────────────────────────────────────
 export default function ContentCalendar({ content, setContent }) {
   const now = new Date()
-  const [year,     setYear]     = useState(now.getFullYear())
-  const [month,    setMonth]    = useState(now.getMonth())
-  const [view,     setView]     = useState('month')
-  const [showForm, setShowForm] = useState(false)
-  const [editing,  setEditing]  = useState(null)
+  const [year,       setYear]       = useState(now.getFullYear())
+  const [month,      setMonth]      = useState(now.getMonth())
+  const [view,       setView]       = useState('month')
+  const [showForm,   setShowForm]   = useState(false)
+  const [editing,    setEditing]    = useState(null)
+  const [dayPopup,   setDayPopup]   = useState(null)   // { date, items }
+  const [prefillDate,setPrefillDate]= useState('')
   const totalWeeks = getWeeksInMonth(year, month)
 
   const monthItems = content.filter(c => {
@@ -157,9 +315,15 @@ export default function ContentCalendar({ content, setContent }) {
     const item = {...form, id:uid(), createdAt:new Date().toISOString()}
     setContent(prev=>{ const next=[...prev,item]; saveData(KEYS.content,next); return next })
     setShowForm(false)
+    setPrefillDate('')
+    // Refresh day popup if open
+    if (dayPopup) {
+      setDayPopup(prev=>({ ...prev, items:[...prev.items, item] }))
+    }
   }
   function toggleComplete(id) {
     setContent(prev=>{ const next=prev.map(c=>c.id===id?{...c,completed:!c.completed}:c); saveData(KEYS.content,next); return next })
+    if (dayPopup) setDayPopup(prev=>({ ...prev, items:prev.items.map(c=>c.id===id?{...c,completed:!c.completed}:c) }))
   }
   function saveEdit(form) {
     setContent(prev=>{ const next=prev.map(c=>c.id===editing.id?{...form,id:c.id,createdAt:c.createdAt}:c); saveData(KEYS.content,next); return next })
@@ -168,9 +332,14 @@ export default function ContentCalendar({ content, setContent }) {
   function deleteContent(id) {
     if(!confirm('Delete this content?')) return
     setContent(prev=>{ const next=prev.filter(c=>c.id!==id); saveData(KEYS.content,next); return next })
+    if (dayPopup) setDayPopup(prev=>({ ...prev, items:prev.items.filter(c=>c.id!==id) }))
   }
 
-  // KPI chip per week
+  function handleDayClick(date, items) {
+    setDayPopup({ date, items })
+  }
+
+  // KPI chip for week view
   function KpiChip({ w }) {
     const items = weekItems(w)
     const done  = items.filter(c=>c.completed).length
@@ -207,12 +376,19 @@ export default function ContentCalendar({ content, setContent }) {
         </button>
       </div>
 
-      {/* Month / Week view */}
-      {(view==='month'||view==='week') && (
+      {/* ── Month calendar grid ── */}
+      {view==='month' && (
+        <MonthGrid
+          year={year} month={month} content={content}
+          onDayClick={handleDayClick}
+        />
+      )}
+
+      {/* ── Week view ── */}
+      {view==='week' && (
         <div>
           {Array.from({length:totalWeeks},(_,i)=>i+1).map(w => {
             const wItems = weekItems(w)
-            if (view==='week' && wItems.length===0) return null
             return (
               <div key={w} style={{ marginBottom:22 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:9 }}>
@@ -235,14 +411,14 @@ export default function ContentCalendar({ content, setContent }) {
         </div>
       )}
 
-      {/* List view */}
+      {/* ── List view ── */}
       {view==='list' && (
         <div>
           <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
             {[
-              { label:'Total', val:monthItems.length, color:'#475569' },
-              { label:'✓ Done', val:monthItems.filter(c=>c.completed).length, color:'#16a34a' },
-              { label:'Pending', val:monthItems.filter(c=>!c.completed).length, color:'#94a3b8' },
+              { label:'Total',   val:monthItems.length,                           color:'#475569' },
+              { label:'✓ Done',  val:monthItems.filter(c=>c.completed).length,    color:'#16a34a' },
+              { label:'Pending', val:monthItems.filter(c=>!c.completed).length,   color:'#94a3b8' },
             ].map(s=>(
               <div key={s.label} style={{ background:'#f8fafc', border:'1px solid #e2e8f0',
                 borderRadius:20, padding:'3px 12px', fontSize:12, color:s.color, fontWeight:600 }}>
@@ -317,8 +493,34 @@ export default function ContentCalendar({ content, setContent }) {
         </div>
       )}
 
-      {showForm && <Modal title="Add New Content" onClose={()=>setShowForm(false)} wide><ContentForm onSave={addContent}  onClose={()=>setShowForm(false)}/></Modal>}
-      {editing   && <Modal title="Edit Content"   onClose={()=>setEditing(null)}   wide><ContentForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/></Modal>}
+      {/* Day popup (from calendar click) */}
+      {dayPopup && (
+        <DayPopup
+          date={dayPopup.date}
+          items={dayPopup.items}
+          onToggle={toggleComplete}
+          onEdit={(item)=>{ setEditing(item); }}
+          onDelete={deleteContent}
+          onAdd={()=>{ setPrefillDate(dayPopup.date); setDayPopup(null); setShowForm(true) }}
+          onClose={()=>setDayPopup(null)}
+        />
+      )}
+
+      {/* Add / Edit forms */}
+      {showForm && (
+        <Modal title="Add New Content" onClose={()=>{ setShowForm(false); setPrefillDate('') }} wide>
+          <ContentForm
+            initial={prefillDate ? { platforms:[], postingDate:prefillDate, caption:'', materials:[], remarks:'', postedLinks:[], completed:false } : undefined}
+            onSave={addContent}
+            onClose={()=>{ setShowForm(false); setPrefillDate('') }}
+          />
+        </Modal>
+      )}
+      {editing && (
+        <Modal title="Edit Content" onClose={()=>setEditing(null)} wide>
+          <ContentForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/>
+        </Modal>
+      )}
     </div>
   )
 }
