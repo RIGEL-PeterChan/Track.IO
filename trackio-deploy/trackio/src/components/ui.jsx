@@ -204,6 +204,119 @@ export function MonthYearPicker({ year, month, onChange }) {
 const navBtnStyle = { background:'none', border:'1px solid #e2e8f0', borderRadius:6,
   padding:'3px 9px', cursor:'pointer', fontSize:12, color:BRAND }
 
+// ── Inline date picker (popup calendar) ─────────────────────
+// value: "YYYY-MM-DD" string | onChange: (val) => void
+export function DatePicker({ label, value, onChange }) {
+  const today     = new Date()
+  const initYear  = value ? parseInt(value.slice(0,4)) : today.getFullYear()
+  const initMonth = value ? parseInt(value.slice(5,7))-1 : today.getMonth()
+
+  const [open,      setOpen]      = useState(false)
+  const [pickYear,  setPickYear]  = useState(initYear)
+  const [pickMonth, setPickMonth] = useState(initMonth)
+  const ref = useRef()
+
+  // Sync internal state when value changes externally
+  useEffect(() => {
+    if (value) {
+      setPickYear(parseInt(value.slice(0,4)))
+      setPickMonth(parseInt(value.slice(5,7))-1)
+    }
+  }, [value])
+
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const totalDays = new Date(pickYear, pickMonth+1, 0).getDate()
+  const firstDow  = new Date(pickYear, pickMonth, 1).getDay()
+  const cells     = [...Array(firstDow).fill(null), ...Array.from({length:totalDays},(_,i)=>i+1)]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  function selectDay(d) {
+    const str = `${pickYear}-${String(pickMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    onChange(str)
+    setOpen(false)
+  }
+
+  function isSelected(d) {
+    if (!d || !value) return false
+    return value === `${pickYear}-${String(pickMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+  }
+  function isToday(d) {
+    return d && today.getFullYear()===pickYear && today.getMonth()===pickMonth && today.getDate()===d
+  }
+
+  const displayValue = value
+    ? new Date(value+'T00:00:00').toLocaleDateString('en-MY',{day:'numeric',month:'short',year:'numeric'})
+    : 'Select date…'
+
+  return (
+    <div style={{ marginBottom:13 }} ref={ref}>
+      {label && <label style={{ display:'block', fontSize:11, fontWeight:700,
+        color:'#64748b', marginBottom:4, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</label>}
+      <button onClick={()=>setOpen(v=>!v)}
+        style={{ width:'100%', boxSizing:'border-box', padding:'8px 12px', textAlign:'left',
+          border:'1px solid #e2e8f0', borderRadius:7, fontSize:14, fontFamily:'inherit',
+          outline:'none', color: value ? '#1e293b' : '#94a3b8', background:'#fafbfc',
+          cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <span>{displayValue}</span>
+        <span style={{ fontSize:14 }}>📅</span>
+      </button>
+
+      {open && (
+        <div style={{ position:'absolute', zIndex:600, background:'white',
+          border:'1px solid #e2e8f0', borderRadius:10, boxShadow:'0 8px 28px #0003',
+          padding:14, minWidth:260, marginTop:4 }}>
+
+          {/* Month/Year nav */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <button onClick={()=>{ if(pickMonth===0){setPickMonth(11);setPickYear(y=>y-1)}else setPickMonth(m=>m-1) }}
+              style={navBtnStyle}>◀</button>
+            <span style={{ fontWeight:700, color:BRAND, fontSize:13 }}>
+              {MONTHS[pickMonth]} {pickYear}
+            </span>
+            <button onClick={()=>{ if(pickMonth===11){setPickMonth(0);setPickYear(y=>y+1)}else setPickMonth(m=>m+1) }}
+              style={navBtnStyle}>▶</button>
+          </div>
+
+          {/* Day-of-week headers */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:4 }}>
+            {['S','M','T','W','T','F','S'].map((d,i)=>(
+              <div key={i} style={{ textAlign:'center', fontSize:10, fontWeight:700,
+                color:'#94a3b8', padding:'2px 0' }}>{d}</div>
+            ))}
+          </div>
+
+          {/* Day cells */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+            {cells.map((d,i)=>(
+              <button key={i} onClick={()=>d&&selectDay(d)} disabled={!d}
+                style={{ padding:'6px 0', border:'none', borderRadius:6, cursor:d?'pointer':'default',
+                  fontSize:12, fontWeight: isSelected(d)||isToday(d) ? 700 : 400,
+                  background: isSelected(d) ? BRAND : isToday(d) ? BRAND_PALE : 'transparent',
+                  color:      isSelected(d) ? 'white' : isToday(d) ? BRAND : d ? '#374151' : 'transparent' }}>
+                {d||''}
+              </button>
+            ))}
+          </div>
+
+          {/* Clear */}
+          {value && (
+            <button onClick={()=>{ onChange(''); setOpen(false) }}
+              style={{ marginTop:10, width:'100%', padding:'6px 0', border:'1px solid #fee2e2',
+                borderRadius:6, background:'#fef2f2', color:'#dc2626', fontSize:12,
+                fontWeight:600, cursor:'pointer' }}>Clear date</button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Tiny icon button ─────────────────────────────────────────
 export const iconBtn = (bg, color) => ({
   background:bg, border:'none', borderRadius:6, padding:'4px 8px',

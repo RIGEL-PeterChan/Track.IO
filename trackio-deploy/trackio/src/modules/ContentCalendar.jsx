@@ -9,7 +9,7 @@ import { saveData, KEYS } from '../storage.js'
 import {
   BRAND, BRAND_PALE, PLATFORMS,
   uid, getWeekOfMonth, getWeeksInMonth,
-  Modal, Input, LinksInput, MonthYearPicker, iconBtn
+  Modal, Input, LinksInput, MonthYearPicker, DatePicker, iconBtn
 } from '../components/ui.jsx'
 
 const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -39,7 +39,7 @@ function ContentForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </div>
-      <Input label="Posting Date"      value={form.postingDate} onChange={field('postingDate')} placeholder="YYYY-MM-DD"/>
+      <DatePicker label="Posting Date" value={form.postingDate} onChange={field('postingDate')}/>
       <Input label="Content / Caption" value={form.caption}    onChange={field('caption')}    placeholder="Caption or content…" multiline/>
       <LinksInput label="Source Files / Materials" links={form.materials}   onChange={field('materials')}/>
       <Input label="Remarks"           value={form.remarks}    onChange={field('remarks')}    placeholder="Notes…" multiline/>
@@ -226,7 +226,7 @@ function MonthGrid({ year, month, content, onDayClick }) {
               const hasContent = items.length > 0
 
               return (
-                <div key={di} onClick={()=>onDayClick(key, items)}
+                <div key={di} onClick={()=>onDayClick(key)}
                   style={{ minHeight:90, padding:'6px 7px', cursor:'pointer',
                     borderRight:'1px solid #f1f5f9',
                     background: isToday(day) ? '#f0f5ff' : 'white',
@@ -297,46 +297,48 @@ export default function ContentCalendar({ content, setContent }) {
   const [view,       setView]       = useState('month')
   const [showForm,   setShowForm]   = useState(false)
   const [editing,    setEditing]    = useState(null)
-  const [dayPopup,   setDayPopup]   = useState(null)   // { date, items }
-  const [prefillDate,setPrefillDate]= useState('')
+  // dayPopup stores ONLY the selected date string — items are always derived live from content
+  const [dayPopupDate, setDayPopupDate] = useState(null)
+  const [prefillDate,  setPrefillDate]  = useState('')
   const totalWeeks = getWeeksInMonth(year, month)
 
+  // ── Derived data (always live from content) ──────────────────
   const monthItems = content.filter(c => {
     if (!c.postingDate) return false
-    const d = new Date(c.postingDate)
+    const d = new Date(c.postingDate + 'T00:00:00')
     return d.getFullYear()===year && d.getMonth()===month
   })
   const weekItems = w => monthItems.filter(c => {
-    const d = new Date(c.postingDate)
+    const d = new Date(c.postingDate + 'T00:00:00')
     return getWeekOfMonth(d)===w
   })
+  // Items for the currently open day popup — always fresh
+  const dayPopupItems = dayPopupDate
+    ? content.filter(c => c.postingDate && c.postingDate.slice(0,10) === dayPopupDate)
+    : []
 
+  // ── Mutators — all update the single content source of truth ─
   function addContent(form) {
-    const item = {...form, id:uid(), createdAt:new Date().toISOString()}
-    setContent(prev=>{ const next=[...prev,item]; saveData(KEYS.content,next); return next })
+    const item = { ...form, id:uid(), createdAt:new Date().toISOString() }
+    setContent(prev => { const next = [...prev, item]; saveData(KEYS.content, next); return next })
     setShowForm(false)
     setPrefillDate('')
-    // Refresh day popup if open
-    if (dayPopup) {
-      setDayPopup(prev=>({ ...prev, items:[...prev.items, item] }))
-    }
+    // Keep the day popup open so user sees the newly added item immediately
   }
   function toggleComplete(id) {
-    setContent(prev=>{ const next=prev.map(c=>c.id===id?{...c,completed:!c.completed}:c); saveData(KEYS.content,next); return next })
-    if (dayPopup) setDayPopup(prev=>({ ...prev, items:prev.items.map(c=>c.id===id?{...c,completed:!c.completed}:c) }))
+    setContent(prev => { const next = prev.map(c => c.id===id ? {...c, completed:!c.completed} : c); saveData(KEYS.content, next); return next })
   }
   function saveEdit(form) {
-    setContent(prev=>{ const next=prev.map(c=>c.id===editing.id?{...form,id:c.id,createdAt:c.createdAt}:c); saveData(KEYS.content,next); return next })
+    setContent(prev => { const next = prev.map(c => c.id===editing.id ? {...form, id:c.id, createdAt:c.createdAt} : c); saveData(KEYS.content, next); return next })
     setEditing(null)
   }
   function deleteContent(id) {
-    if(!confirm('Delete this content?')) return
-    setContent(prev=>{ const next=prev.filter(c=>c.id!==id); saveData(KEYS.content,next); return next })
-    if (dayPopup) setDayPopup(prev=>({ ...prev, items:prev.items.filter(c=>c.id!==id) }))
+    if (!confirm('Delete this content?')) return
+    setContent(prev => { const next = prev.filter(c => c.id!==id); saveData(KEYS.content, next); return next })
   }
 
-  function handleDayClick(date, items) {
-    setDayPopup({ date, items })
+  function handleDayClick(date) {
+    setDayPopupDate(date)
   }
 
   // KPI chip for week view
@@ -380,7 +382,7 @@ export default function ContentCalendar({ content, setContent }) {
       {view==='month' && (
         <MonthGrid
           year={year} month={month} content={content}
-          onDayClick={handleDayClick}
+          onDayClick={date => handleDayClick(date)}
         />
       )}
 
@@ -493,16 +495,16 @@ export default function ContentCalendar({ content, setContent }) {
         </div>
       )}
 
-      {/* Day popup (from calendar click) */}
-      {dayPopup && (
+      {/* Day popup (from calendar click) — items derived live from content */}
+      {dayPopupDate && (
         <DayPopup
-          date={dayPopup.date}
-          items={dayPopup.items}
+          date={dayPopupDate}
+          items={dayPopupItems}
           onToggle={toggleComplete}
-          onEdit={(item)=>{ setEditing(item); }}
+          onEdit={item => setEditing(item)}
           onDelete={deleteContent}
-          onAdd={()=>{ setPrefillDate(dayPopup.date); setDayPopup(null); setShowForm(true) }}
-          onClose={()=>setDayPopup(null)}
+          onAdd={() => { setPrefillDate(dayPopupDate); setDayPopupDate(null); setShowForm(true) }}
+          onClose={() => setDayPopupDate(null)}
         />
       )}
 

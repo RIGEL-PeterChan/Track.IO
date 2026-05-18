@@ -7,22 +7,88 @@
 import { useState } from 'react'
 import { saveData, KEYS } from '../storage.js'
 import {
-  BRAND, BRAND_PALE, STATUS_OPTIONS,
+  BRAND, BRAND_PALE, STATUS_OPTIONS, MONTHS,
   uid, getWeekOfMonth, getWeeksInMonth,
   StatusBadge, Modal, Input, LinksInput, MonthYearPicker, iconBtn
 } from '../components/ui.jsx'
 
+// Returns "YYYY-MM-DD" for the Monday of the given week number in a month
+function weekToDate(year, month, week) {
+  // Find the first day of the week slot (Sun-based)
+  const firstDow = new Date(year, month, 1).getDay()
+  const day = (week - 1) * 7 - firstDow + 1
+  const clamped = Math.max(1, Math.min(day, new Date(year, month+1, 0).getDate()))
+  return `${year}-${String(month+1).padStart(2,'0')}-${String(clamped).padStart(2,'0')}`
+}
+
 // ── Task form (add / edit) ───────────────────────────────────
-function TaskForm({ initial, onSave, onClose }) {
+function TaskForm({ initial, onSave, onClose, defaultYear, defaultMonth, defaultWeek }) {
+  const now        = new Date()
+  const initYear   = defaultYear  ?? now.getFullYear()
+  const initMonth  = defaultMonth ?? now.getMonth()
+  const initWeek   = defaultWeek  ?? getWeekOfMonth(now)
+
   const empty = { name:'', overview:'', sources:[], remarks:'', status:'pending' }
-  const [form, setForm] = useState(initial || empty)
+  const [form,      setForm]      = useState(initial || empty)
+  const [taskYear,  setTaskYear]  = useState(
+    initial?.createdAt ? new Date(initial.createdAt).getFullYear() : initYear
+  )
+  const [taskMonth, setTaskMonth] = useState(
+    initial?.createdAt ? new Date(initial.createdAt).getMonth() : initMonth
+  )
+  const [taskWeek,  setTaskWeek]  = useState(
+    initial?.createdAt ? getWeekOfMonth(new Date(initial.createdAt)) : initWeek
+  )
+
   const field = k => v => setForm(f=>({...f,[k]:v}))
+  const totalWeeks = getWeeksInMonth(taskYear, taskMonth)
+
+  function handleSave() {
+    if (!form.name.trim()) return
+    // Encode the chosen week into createdAt so filtering works
+    const createdAt = weekToDate(taskYear, taskMonth, taskWeek) + 'T00:00:00.000Z'
+    onSave({ ...form, createdAt })
+  }
+
   return (
     <>
       <Input label="Task Name"  value={form.name}     onChange={field('name')}     placeholder="Enter task name…"/>
       <Input label="Overview"   value={form.overview} onChange={field('overview')} placeholder="Brief description…" multiline/>
       <LinksInput label="Source Files / Links" links={form.sources} onChange={field('sources')}/>
       <Input label="Remarks"    value={form.remarks}  onChange={field('remarks')}  placeholder="Notes or remarks…" multiline/>
+
+      {/* Week assignment */}
+      <div style={{ marginBottom:14 }}>
+        <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#64748b',
+          marginBottom:6, textTransform:'uppercase', letterSpacing:'0.06em' }}>Assign to Week</label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+          {/* Month/Year inline selector */}
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <button onClick={()=>{ if(taskMonth===0){setTaskMonth(11);setTaskYear(y=>y-1);setTaskWeek(1)}else{setTaskMonth(m=>m-1);setTaskWeek(1)} }}
+              style={miniNavBtn}>◀</button>
+            <span style={{ fontSize:12, fontWeight:700, color:BRAND, minWidth:90, textAlign:'center' }}>
+              {MONTHS[taskMonth].slice(0,3)} {taskYear}
+            </span>
+            <button onClick={()=>{ if(taskMonth===11){setTaskMonth(0);setTaskYear(y=>y+1);setTaskWeek(1)}else{setTaskMonth(m=>m+1);setTaskWeek(1)} }}
+              style={miniNavBtn}>▶</button>
+          </div>
+          {/* Week buttons */}
+          <div style={{ display:'flex', gap:4 }}>
+            {Array.from({length:totalWeeks},(_,i)=>i+1).map(w=>(
+              <button key={w} onClick={()=>setTaskWeek(w)}
+                style={{ padding:'5px 11px', borderRadius:7, border:'1px solid #e2e8f0',
+                  background: taskWeek===w ? BRAND : '#f8fafc',
+                  color:      taskWeek===w ? 'white' : '#374151',
+                  cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                W{w}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginTop:5, fontSize:11, color:'#94a3b8' }}>
+          Currently: <strong style={{ color:BRAND }}>{MONTHS[taskMonth]} {taskYear} — Week {taskWeek}</strong>
+        </div>
+      </div>
       <div style={{ marginBottom:14 }}>
         <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#64748b',
           marginBottom:6, textTransform:'uppercase', letterSpacing:'0.06em' }}>Status</label>
@@ -41,7 +107,7 @@ function TaskForm({ initial, onSave, onClose }) {
       <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:6 }}>
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8,
           border:'1px solid #e2e8f0', background:'white', cursor:'pointer', fontSize:13, color:'#64748b' }}>Cancel</button>
-        <button onClick={()=>form.name.trim()&&onSave(form)}
+        <button onClick={handleSave}
           style={{ padding:'9px 20px', borderRadius:8, border:'none',
             background:BRAND, color:'white', cursor:'pointer', fontSize:13, fontWeight:700 }}>
           {initial ? 'Save Changes' : 'Add Task'}
@@ -50,6 +116,9 @@ function TaskForm({ initial, onSave, onClose }) {
     </>
   )
 }
+
+const miniNavBtn = { background:'none', border:'1px solid #e2e8f0', borderRadius:6,
+  padding:'3px 8px', cursor:'pointer', fontSize:11, color:BRAND }
 
 // ── Task card ────────────────────────────────────────────────
 function TaskCard({ task, onStatusChange, onEdit, onDelete }) {
@@ -119,7 +188,7 @@ export default function StatusTracker({ tasks, setTasks }) {
   const grouped = STATUS_OPTIONS.reduce((acc,s)=>{ acc[s.key]=weekTasks.filter(t=>t.status===s.key); return acc }, {})
 
   function addTask(form) {
-    const t = {...form, id:uid(), createdAt:new Date().toISOString()}
+    const t = { ...form, id:uid() }
     setTasks(prev=>{ const next=[...prev,t]; saveData(KEYS.tasks,next); return next })
     setShowForm(false)
   }
@@ -249,8 +318,8 @@ export default function StatusTracker({ tasks, setTasks }) {
         </div>
       )}
 
-      {showForm && <Modal title="Add New Task"  onClose={()=>setShowForm(false)}><TaskForm onSave={addTask}  onClose={()=>setShowForm(false)}/></Modal>}
-      {editing   && <Modal title="Edit Task"    onClose={()=>setEditing(null)}>  <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/></Modal>}
+      {showForm && <Modal title="Add New Task"  onClose={()=>setShowForm(false)}><TaskForm onSave={addTask}  onClose={()=>setShowForm(false)} defaultYear={year} defaultMonth={month} defaultWeek={week}/></Modal>}
+      {editing   && <Modal title="Edit Task"    onClose={()=>setEditing(null)}>  <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)} defaultYear={year} defaultMonth={month} defaultWeek={week}/></Modal>}
     </div>
   )
 }
