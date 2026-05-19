@@ -284,7 +284,7 @@ function MonthGrid({ year, month, content, onDayClick }) {
                           border: `1px solid ${item.completed ? '#86efac' : '#dce8f8'}`
                         }}>
                           {plat ? plat.label.split('·')[1]?.trim()||plat.label : ''}
-                          {item.caption ? \` — ${item.caption.slice(0,15)}\` : ''}
+                          {item.caption ? ` — ${item.caption.slice(0,15)}` : ''}
                         </div>
                       )
                     })
