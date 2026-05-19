@@ -16,10 +16,11 @@
 //   subscribeToChanges(key, callback)   → unsubscribe fn
 // ============================================================
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL       || ''
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/rest\/v1\/?$/, '')
 const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY  || ''
 const TABLE        = 'trackio_store'
 const POLL_MS      = 5000   // check for remote changes every 5 seconds
+const REST         = `${SUPABASE_URL}/rest/v1`   // single source of truth for API base URL
 
 // ── Local cache (for instant UI, offline fallback) ────────────
 function localGet(key) {
@@ -40,7 +41,7 @@ async function remoteGet(key) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null
   try {
     const res  = await fetch(
-      `${SUPABASE_URL}/rest/v1/${TABLE}?key=eq.${encodeURIComponent(key)}&select=value`,
+      `${REST}/${TABLE}?key=eq.${encodeURIComponent(key)}&select=value`,
       { headers: headers() }
     )
     if (!res.ok) return null
@@ -52,7 +53,7 @@ async function remoteGet(key) {
 async function remoteSet(key, data) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return false
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
+    const res = await fetch(`${REST}/${TABLE}`, {
       method:  'POST',
       headers: { ...headers(), Prefer: 'resolution=merge-duplicates' },
       body:    JSON.stringify({ key, value: data }),
