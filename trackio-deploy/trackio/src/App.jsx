@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef } from 'react'
-import { loadData, saveData, KEYS, subscribeToChanges } from './storage.js'
+import { loadData, saveData, KEYS, subscribeToChanges, migrateLocalToRemote } from './storage.js'
 import StatusTracker from './modules/StatusTracker.jsx'
 import ContentCalendar from './modules/ContentCalendar.jsx'
 
@@ -96,6 +96,8 @@ export default function App() {
   const [syncStatus,   setSyncStatus]   = useState('offline')
   const [lastSync,     setLastSync]     = useState(null)
   const [menuOpen,     setMenuOpen]     = useState(false)
+  const [showMigrate,  setShowMigrate]  = useState(false)
+  const [migrating,    setMigrating]    = useState(false)
 
   // ── Initial data load ───────────────────────────────────────
   useEffect(() => {
@@ -106,6 +108,15 @@ export default function App() {
         setLoading(false)
         setSyncStatus('synced')
         setLastSync(new Date())
+        // Show migrate banner if there is local data that may not be on Supabase yet
+        // (loadData auto-migrates on first load, but this handles edge cases)
+        const localTasks   = JSON.parse(localStorage.getItem(KEYS.tasks)   || '[]')
+        const localContent = JSON.parse(localStorage.getItem(KEYS.content) || '[]')
+        if (localTasks.length > 0 || localContent.length > 0) {
+          setShowMigrate(true)
+          // Auto-hide after 10s if user ignores it
+          setTimeout(() => setShowMigrate(false), 10000)
+        }
       })
   }, [])
 
@@ -147,6 +158,18 @@ export default function App() {
       setter(updater)
       setTimeout(() => { setSyncStatus('synced'); setLastSync(new Date()) }, 800)
     }
+  }
+
+  // Force-push all local data to Supabase
+  async function handleMigrate() {
+    setMigrating(true)
+    const result = await migrateLocalToRemote()
+    const total = Object.values(result).reduce((s, n) => s + n, 0)
+    setMigrating(false)
+    setShowMigrate(false)
+    setSyncStatus('synced')
+    setLastSync(new Date())
+    alert(`✅ Synced! Uploaded ${total} record(s) to Supabase. All devices will now see your data.`)
   }
 
   const ActiveComponent = MODULES.find(m => m.key === activeModule)?.Component
@@ -202,6 +225,27 @@ export default function App() {
               {m.icon} {m.label}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* ── Migration banner ── */}
+      {showMigrate && !loading && (
+        <div style={{ background:'#fffbeb', borderBottom:'1px solid #f5c518',
+          padding:'10px 20px', display:'flex', alignItems:'center',
+          gap:12, flexWrap:'wrap' }}>
+          <span style={{ fontSize:13, color:'#92400e', flex:1, minWidth:200 }}>
+            💡 <strong>You have local data</strong> that may not be synced to other devices yet.
+          </span>
+          <button onClick={handleMigrate} disabled={migrating}
+            style={{ padding:'7px 18px', borderRadius:8, border:'none',
+              background: migrating ? '#94a3b8' : '#12357f',
+              color:'white', cursor: migrating ? 'default' : 'pointer',
+              fontSize:13, fontWeight:700, whiteSpace:'nowrap' }}>
+            {migrating ? 'Uploading…' : '⬆ Sync to all devices'}
+          </button>
+          <button onClick={() => setShowMigrate(false)}
+            style={{ background:'none', border:'none', cursor:'pointer',
+              color:'#94a3b8', fontSize:18, lineHeight:1 }}>✕</button>
         </div>
       )}
 

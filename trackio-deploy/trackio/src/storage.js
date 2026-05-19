@@ -90,19 +90,47 @@ export function subscribeToChanges(key, callback) {
 }
 
 // ── Public API ────────────────────────────────────────────────
+
+// loadData: fetch from Supabase first.
+// If Supabase is empty BUT localStorage has data, auto-migrate
+// the local data up to Supabase so it becomes shared immediately.
 export async function loadData(key) {
   const remote = await remoteGet(key)
-  if (remote !== null) {
+
+  if (remote !== null && remote.length > 0) {
+    // Supabase has data — use it as source of truth
     localSet(key, remote)
     return remote
   }
-  return localGet(key) || []            // offline fallback
+
+  // Supabase is empty — check localStorage for existing data
+  const local = localGet(key) || []
+  if (local.length > 0) {
+    // Auto-migrate: push local data up to Supabase so all devices get it
+    await remoteSet(key, local)
+    console.info(`[Track.IO] Migrated ${local.length} local records to Supabase for key: ${key}`)
+  }
+  return local
 }
 
 export async function saveData(key, data) {
   localSet(key, data)                   // instant local write
   await remoteSet(key, data)            // persist to Supabase
   // (other devices will pick this up on their next poll tick)
+}
+
+// migrateLocalToRemote: force-push all local data to Supabase.
+// Called manually from the UI if auto-migration didn't catch everything.
+export async function migrateLocalToRemote() {
+  const results = {}
+  for (const [name, key] of Object.entries(KEYS)) {
+    const local = localGet(key) || []
+    if (local.length > 0) {
+      await remoteSet(key, local)
+      results[name] = local.length
+    }
+  }
+  return results
 }
 
 // Storage keys used across the app
