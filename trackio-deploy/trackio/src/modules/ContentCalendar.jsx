@@ -236,7 +236,7 @@ function MonthGrid({ year, month, content, onDayClick }) {
             borderTop: wi===0 ? 'none' : '1px solid #f1f5f9' }}>
             {week.map((day, di) => {
               if (!day) return (
-                <div key={di} style={{ minHeight:90, background:'#fafbfc',
+                <div key={di} style={{ minHeight:110, background:'#fafbfc',
                   borderRight:'1px solid #f1f5f9', padding:6 }}/>
               )
               const key   = dateStr(day)
@@ -245,7 +245,7 @@ function MonthGrid({ year, month, content, onDayClick }) {
 
               return (
                 <div key={di} onClick={()=>onDayClick(key)}
-                  style={{ minHeight:90, padding:'6px 7px', cursor:'pointer',
+                  style={{ minHeight:110, maxHeight:200, overflowY:'auto', padding:'6px 7px', cursor:'pointer',
                     borderRight:'1px solid #f1f5f9',
                     background: isToday(day) ? '#f0f5ff' : 'white',
                     transition:'background 0.12s' }}
@@ -267,36 +267,39 @@ function MonthGrid({ year, month, content, onDayClick }) {
                     )}
                   </div>
 
-                  {/* Content pills — one pill per platform per item */}
+                  {/* Content pills — one pill per platform per item.
+                       Items with no platform selected show nothing (by design). */}
                   {items.flatMap((item, ii) =>
-                    (item.platforms||[item]).map((platKey, pi) => {
-                      const plat = typeof platKey==='string'
-                        ? PLATFORMS.find(p=>p.key===platKey)
-                        : PLATFORMS.find(p=>(item.platforms||[]).includes(p.key))
+                    (item.platforms||[]).map((platKey, pi) => {
+                      const plat = PLATFORMS.find(p=>p.key===platKey)
                       return (
                         <div key={`${ii}-${pi}`} style={{
-                          fontSize:10, lineHeight:1.3, marginBottom:2, padding:'2px 5px',
-                          borderRadius:4, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                          fontSize:10, lineHeight:1.4, marginBottom:2, padding:'2px 6px',
+                          borderRadius:4, fontWeight:600,
+                          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
                           background: item.completed ? '#dcfce7' : BRAND_PALE,
                           color:      item.completed ? '#15803d' : BRAND,
                           textDecoration: item.completed ? 'line-through' : 'none',
-                          opacity: item.completed ? 0.8 : 1
+                          opacity: item.completed ? 0.8 : 1,
+                          border: `1px solid ${item.completed ? '#86efac' : '#dce8f8'}`
                         }}>
-                          {plat ? plat.label.split('·')[1]?.trim()||plat.label : '—'}
-                          {item.caption ? ` ${item.caption.slice(0,15)}` : ''}
+                          {plat ? plat.label.split('·')[1]?.trim()||plat.label : ''}
+                          {item.caption ? \` — ${item.caption.slice(0,15)}\` : ''}
                         </div>
                       )
                     })
-                  ).slice(0,4)}
-                  {postsTotal(items)>4 && (
-                    <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600 }}>+{postsTotal(items)-4} more</div>
+                  ).slice(0, 5)}
+                  {postsTotal(items) > 5 && (
+                    <div style={{ fontSize:10, color:'#94a3b8', fontWeight:600, marginTop:1 }}>
+                      +{postsTotal(items)-5} more
+                    </div>
                   )}
                 </div>
               )
             })}
 
             {/* KPI cell — posts done / total posts */}
-            <div style={{ minHeight:90, display:'flex', flexDirection:'column',
+            <div style={{ minHeight:110, display:'flex', flexDirection:'column',
               alignItems:'center', justifyContent:'center', padding:6,
               background: wDone>0 ? '#f0fdf4' : '#fafbfc',
               borderLeft:'1px solid #f1f5f9' }}>
