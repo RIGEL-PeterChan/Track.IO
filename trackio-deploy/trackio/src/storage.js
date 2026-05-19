@@ -1,25 +1,27 @@
 // ============================================================
-// storage.js — Data persistence + real-time sync for Track.IO
+// storage.js — Data persistence + cross-device sync
 //
-// Architecture:
-//   - Supabase REST API  → read/write data
-//   - Supabase Realtime  → WebSocket push to all open tabs/devices
-//   - localStorage       → instant local cache (offline fallback)
+// Strategy:
+//   1. On load        → fetch latest from Supabase
+//   2. On save        → write to Supabase immediately
+//   3. Polling        → every 5s, all open tabs re-fetch from
+//                       Supabase and update state if data changed
+//
+// This guarantees all devices always see the same data.
+// No WebSocket complexity — just reliable REST polling.
 //
 // Public API:
-//   loadData(key)                          → Promise<array>
-//   saveData(key, data)                    → Promise<void>
-//   subscribeToChanges(key, callback)      → unsubscribe()
-//
-// To swap the backend: replace the remote* functions and
-// subscribeToChanges. The rest of the app is untouched.
+//   loadData(key)                       → Promise<array>
+//   saveData(key, data)                 → Promise<void>
+//   subscribeToChanges(key, callback)   → unsubscribe fn
 // ============================================================
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL  || ''
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL       || ''
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY  || ''
 const TABLE        = 'trackio_store'
+const POLL_MS      = 5000   // check for remote changes every 5 seconds
 
-// ── Local cache ───────────────────────────────────────────────
+// ── Local cache (for instant UI, offline fallback) ────────────
 function localGet(key) {
   try { return JSON.parse(localStorage.getItem(key) || 'null') } catch { return null }
 }
@@ -27,10 +29,10 @@ function localSet(key, data) {
   try { localStorage.setItem(key, JSON.stringify(data)) } catch {}
 }
 
-// ── Supabase REST helpers ─────────────────────────────────────
-const baseHeaders = () => ({
-  apikey:        SUPABASE_KEY,
-  Authorization: `Bearer ${SUPABASE_KEY}`,
+// ── Supabase REST ─────────────────────────────────────────────
+const headers = () => ({
+  apikey:         SUPABASE_KEY,
+  Authorization:  `Bearer ${SUPABASE_KEY}`,
   'Content-Type': 'application/json',
 })
 
@@ -39,132 +41,67 @@ async function remoteGet(key) {
   try {
     const res  = await fetch(
       `${SUPABASE_URL}/rest/v1/${TABLE}?key=eq.${encodeURIComponent(key)}&select=value`,
-      { headers: baseHeaders() }
+      { headers: headers() }
     )
+    if (!res.ok) return null
     const rows = await res.json()
     return rows?.[0]?.value ?? null
   } catch { return null }
 }
 
 async function remoteSet(key, data) {
-  if (!SUPABASE_URL || !SUPABASE_KEY) return
+  if (!SUPABASE_URL || !SUPABASE_KEY) return false
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}`, {
       method:  'POST',
-      headers: { ...baseHeaders(), Prefer: 'resolution=merge-duplicates' },
+      headers: { ...headers(), Prefer: 'resolution=merge-duplicates' },
       body:    JSON.stringify({ key, value: data }),
     })
-  } catch {}
+    return res.ok
+  } catch { return false }
 }
 
-// ── Supabase Realtime WebSocket subscription ──────────────────
-// Uses the Supabase Realtime v2 protocol over WebSocket.
-// Listens for INSERT and UPDATE events on the trackio_store table
-// and calls callback(newData) whenever another client saves.
+// ── Polling-based cross-device sync ───────────────────────────
+// Starts a setInterval that fetches the latest value from Supabase
+// every POLL_MS milliseconds. If the remote value differs from what
+// we last stored locally, the callback is fired with fresh data.
 //
-// Returns an unsubscribe() function — call it on component unmount.
+// Uses JSON.stringify comparison to detect changes efficiently —
+// no unnecessary React re-renders if nothing changed.
 export function subscribeToChanges(key, callback) {
   if (!SUPABASE_URL || !SUPABASE_KEY) return () => {}
 
-  // Build the Realtime WebSocket URL from the REST URL
-  const wsUrl = SUPABASE_URL
-    .replace('https://', 'wss://')
-    .replace('http://',  'ws://')
-    + '/realtime/v1/websocket?apikey=' + SUPABASE_KEY + '&vsn=1.0.0'
+  // Track the last known remote value as a JSON string for comparison
+  let lastSeen = JSON.stringify(localGet(key) || [])
 
-  let ws
-  let heartbeatInterval
-  let reconnectTimeout
-  let closed = false
-  const ref  = { val: 1 }
-
-  function nextRef() { return String(ref.val++) }
-
-  function connect() {
-    if (closed) return
-    try {
-      ws = new WebSocket(wsUrl)
-    } catch { return }
-
-    ws.onopen = () => {
-      // 1. Join the Phoenix channel for this table
-      ws.send(JSON.stringify({
-        topic:   `realtime:public:${TABLE}`,
-        event:   'phx_join',
-        payload: {
-          config: {
-            broadcast:  { self: false },
-            presence:   { key: '' },
-            postgres_changes: [{
-              event:  '*',        // INSERT, UPDATE, DELETE
-              schema: 'public',
-              table:  TABLE,
-              filter: `key=eq.${key}`,
-            }],
-          },
-        },
-        ref: nextRef(),
-      }))
-
-      // 2. Heartbeat every 25 s to keep the socket alive
-      heartbeatInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            topic: 'phoenix', event: 'heartbeat', payload: {}, ref: nextRef()
-          }))
-        }
-      }, 25000)
+  const intervalId = setInterval(async () => {
+    const remote = await remoteGet(key)
+    if (remote === null) return          // network error — skip this tick
+    const remoteStr = JSON.stringify(remote)
+    if (remoteStr !== lastSeen) {        // data changed on another device
+      lastSeen = remoteStr
+      localSet(key, remote)
+      callback(remote)                   // notify React to update state
     }
+  }, POLL_MS)
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data)
-        // Realtime v2 wraps postgres changes under postgres_changes event
-        if (
-          msg.event === 'postgres_changes' &&
-          msg.payload?.data?.record?.key === key
-        ) {
-          const newValue = msg.payload.data.record.value
-          if (newValue !== undefined) {
-            localSet(key, newValue)
-            callback(newValue)
-          }
-        }
-      } catch {}
-    }
-
-    ws.onclose = () => {
-      clearInterval(heartbeatInterval)
-      // Auto-reconnect after 3 s unless intentionally closed
-      if (!closed) {
-        reconnectTimeout = setTimeout(connect, 3000)
-      }
-    }
-
-    ws.onerror = () => ws.close()
-  }
-
-  connect()
-
-  // Return cleanup function
-  return () => {
-    closed = true
-    clearInterval(heartbeatInterval)
-    clearTimeout(reconnectTimeout)
-    if (ws) ws.close()
-  }
+  return () => clearInterval(intervalId) // cleanup on unmount
 }
 
 // ── Public API ────────────────────────────────────────────────
 export async function loadData(key) {
   const remote = await remoteGet(key)
-  if (remote !== null) { localSet(key, remote); return remote }
-  return localGet(key) || []
+  if (remote !== null) {
+    localSet(key, remote)
+    return remote
+  }
+  return localGet(key) || []            // offline fallback
 }
 
 export async function saveData(key, data) {
-  localSet(key, data)       // instant local write
-  await remoteSet(key, data) // persist + triggers Realtime event to all subscribers
+  localSet(key, data)                   // instant local write
+  await remoteSet(key, data)            // persist to Supabase
+  // (other devices will pick this up on their next poll tick)
 }
 
 // Storage keys used across the app

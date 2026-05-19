@@ -41,25 +41,31 @@ function LiveClock() {
 }
 
 // ── Sync status indicator ─────────────────────────────────────
-// synced   = connected + up to date  → green
-// syncing  = write in flight         → yellow pulse
-// incoming = just received remote update → blue pulse
-// offline  = WebSocket disconnected  → grey
-function SyncIndicator({ status }) {
+function SyncIndicator({ status, lastSync }) {
   const map = {
     synced:   { color:'#4ade80', shadow:'0 0 6px #4ade8099', label:'Live' },
     syncing:  { color:BRAND_GOLD, shadow:'0 0 6px #f5c51899', label:'Saving…' },
     incoming: { color:'#60a5fa', shadow:'0 0 8px #60a5fa99', label:'Syncing…' },
-    offline:  { color:'#94a3b8', shadow:'none', label:'Offline' },
+    offline:  { color:'#94a3b8', shadow:'none',               label:'Offline' },
   }
   const s = map[status] || map.synced
+  const timeStr = lastSync
+    ? lastSync.toLocaleTimeString('en-MY', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true })
+    : null
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-      <div style={{ width:7, height:7, borderRadius:'50%',
-        background:s.color, boxShadow:s.shadow,
-        transition:'background 0.3s, box-shadow 0.3s' }}/>
-      <span style={{ fontSize:11, color:'rgba(255,255,255,0.55)',
-        fontWeight:500, whiteSpace:'nowrap' }}>{s.label}</span>
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:1 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+        <div style={{ width:7, height:7, borderRadius:'50%',
+          background:s.color, boxShadow:s.shadow,
+          transition:'background 0.3s, box-shadow 0.3s' }}/>
+        <span style={{ fontSize:11, color:'rgba(255,255,255,0.6)',
+          fontWeight:600, whiteSpace:'nowrap' }}>{s.label}</span>
+      </div>
+      {timeStr && (
+        <span style={{ fontSize:9, color:'rgba(255,255,255,0.35)', whiteSpace:'nowrap' }}>
+          synced {timeStr}
+        </span>
+      )}
     </div>
   )
 }
@@ -88,6 +94,7 @@ export default function App() {
   const [content,      setContent]      = useState([])
   const [loading,      setLoading]      = useState(true)
   const [syncStatus,   setSyncStatus]   = useState('offline')
+  const [lastSync,     setLastSync]     = useState(null)
   const [menuOpen,     setMenuOpen]     = useState(false)
 
   // ── Initial data load ───────────────────────────────────────
@@ -98,6 +105,7 @@ export default function App() {
         setContent(c)
         setLoading(false)
         setSyncStatus('synced')
+        setLastSync(new Date())
       })
   }, [])
 
@@ -111,12 +119,14 @@ export default function App() {
     const unsubTasks = subscribeToChanges(KEYS.tasks, (newData) => {
       setSyncStatus('incoming')
       setTasks(newData)
+      setLastSync(new Date())
       setTimeout(() => setSyncStatus('synced'), 1200)
     })
 
     const unsubContent = subscribeToChanges(KEYS.content, (newData) => {
       setSyncStatus('incoming')
       setContent(newData)
+      setLastSync(new Date())
       setTimeout(() => setSyncStatus('synced'), 1200)
     })
 
@@ -135,8 +145,7 @@ export default function App() {
     return (updater) => {
       setSyncStatus('syncing')
       setter(updater)
-      // Reset to synced after a short delay (saveData is async)
-      setTimeout(() => setSyncStatus('synced'), 800)
+      setTimeout(() => { setSyncStatus('synced'); setLastSync(new Date()) }, 800)
     }
   }
 
@@ -169,7 +178,7 @@ export default function App() {
 
         {/* Right: sync indicator + clock */}
         <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
-          <SyncIndicator status={loading ? 'offline' : syncStatus} />
+          <SyncIndicator status={loading ? 'offline' : syncStatus} lastSync={lastSync} />
           <div className="live-clock"><LiveClock /></div>
         </div>
 
