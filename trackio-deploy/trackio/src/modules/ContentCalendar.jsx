@@ -183,11 +183,15 @@ function MonthGrid({ year, month, content, onDayClick }) {
   const isToday   = (d) => today.getFullYear()===year && today.getMonth()===month && today.getDate()===d
 
   // Build map: "YYYY-MM-DD" -> items[]
+  // Parse date parts directly from the string to avoid UTC->local timezone shifts.
+  // e.g. new Date("2026-01-01") in GMT+8 becomes Dec 31 2025, wrong month/year.
   const dayMap = {}
   content.forEach(c => {
     if (!c.postingDate) return
-    const d = new Date(c.postingDate)
-    if (d.getFullYear()===year && d.getMonth()===month) {
+    const parts = c.postingDate.slice(0,10).split('-')
+    const dYear  = parseInt(parts[0], 10)
+    const dMonth = parseInt(parts[1], 10) - 1
+    if (dYear === year && dMonth === month) {
       const key = c.postingDate.slice(0,10)
       if (!dayMap[key]) dayMap[key] = []
       dayMap[key].push(c)
@@ -321,14 +325,18 @@ export default function ContentCalendar({ content, setContent }) {
   const totalWeeks = getWeeksInMonth(year, month)
 
   // ── Derived data (always live from content) ──────────────────
+  // Parse date string directly to avoid UTC->local timezone shift bugs
+  const parseLocalDate = str => {
+    const p = str.slice(0,10).split('-')
+    return new Date(parseInt(p[0]),parseInt(p[1])-1,parseInt(p[2]))
+  }
   const monthItems = content.filter(c => {
     if (!c.postingDate) return false
-    const d = new Date(c.postingDate + 'T00:00:00')
-    return d.getFullYear()===year && d.getMonth()===month
+    const p = c.postingDate.slice(0,10).split('-')
+    return parseInt(p[0])===year && parseInt(p[1])-1===month
   })
   const weekItems = w => monthItems.filter(c => {
-    const d = new Date(c.postingDate + 'T00:00:00')
-    return getWeekOfMonth(d)===w
+    return getWeekOfMonth(parseLocalDate(c.postingDate))===w
   })
   // Items for the currently open day popup — always fresh
   const dayPopupItems = dayPopupDate
