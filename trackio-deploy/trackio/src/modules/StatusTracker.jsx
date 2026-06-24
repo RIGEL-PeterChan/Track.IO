@@ -1,7 +1,7 @@
 // ============================================================
 // StatusTracker.jsx — Module 1
 // Task management with board/table views, week rotation,
-// status badges, and source links.
+// status badges, source links, and duplicate-to-week.
 // ============================================================
 
 import { useState } from 'react'
@@ -12,18 +12,16 @@ import {
   StatusBadge, Modal, Input, LinksInput, MonthYearPicker, iconBtn
 } from '../components/ui.jsx'
 
-// Returns "YYYY-MM-DD" for the Monday of the given week number in a month
+// Returns a date string for the start of a given week in a month
 function weekToDate(year, month, week) {
-  // Find the first day of the week slot (Sun-based)
   const firstDow = new Date(year, month, 1).getDay()
   const day = (week - 1) * 7 - firstDow + 1
   const clamped = Math.max(1, Math.min(day, new Date(year, month+1, 0).getDate()))
   return `${year}-${String(month+1).padStart(2,'0')}-${String(clamped).padStart(2,'0')}`
 }
 
-// ── Task form (add / edit) ───────────────────────────────────
+// ── Task form (add / edit) ────────────────────────────────────
 function TaskForm({ initial, onSave, onClose }) {
-  // Always default to today's actual date/week — not the viewed month
   const today      = new Date()
   const todayYear  = today.getFullYear()
   const todayMonth = today.getMonth()
@@ -46,7 +44,6 @@ function TaskForm({ initial, onSave, onClose }) {
 
   function handleSave() {
     if (!form.name.trim()) return
-    // Encode the chosen week into createdAt so filtering works
     const createdAt = weekToDate(taskYear, taskMonth, taskWeek) + 'T00:00:00.000Z'
     onSave({ ...form, createdAt })
   }
@@ -63,7 +60,6 @@ function TaskForm({ initial, onSave, onClose }) {
         <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#64748b',
           marginBottom:6, textTransform:'uppercase', letterSpacing:'0.06em' }}>Assign to Week</label>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
-          {/* Month/Year inline selector */}
           <div style={{ display:'flex', alignItems:'center', gap:4 }}>
             <button onClick={()=>{ if(taskMonth===0){setTaskMonth(11);setTaskYear(y=>y-1);setTaskWeek(1)}else{setTaskMonth(m=>m-1);setTaskWeek(1)} }}
               style={miniNavBtn}>◀</button>
@@ -73,7 +69,6 @@ function TaskForm({ initial, onSave, onClose }) {
             <button onClick={()=>{ if(taskMonth===11){setTaskMonth(0);setTaskYear(y=>y+1);setTaskWeek(1)}else{setTaskMonth(m=>m+1);setTaskWeek(1)} }}
               style={miniNavBtn}>▶</button>
           </div>
-          {/* Week buttons */}
           <div style={{ display:'flex', gap:4 }}>
             {Array.from({length:totalWeeks},(_,i)=>i+1).map(w=>(
               <button key={w} onClick={()=>setTaskWeek(w)}
@@ -90,6 +85,8 @@ function TaskForm({ initial, onSave, onClose }) {
           Currently: <strong style={{ color:BRAND }}>{MONTHS[taskMonth]} {taskYear} — Week {taskWeek}</strong>
         </div>
       </div>
+
+      {/* Status */}
       <div style={{ marginBottom:14 }}>
         <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#64748b',
           marginBottom:6, textTransform:'uppercase', letterSpacing:'0.06em' }}>Status</label>
@@ -105,6 +102,7 @@ function TaskForm({ initial, onSave, onClose }) {
           ))}
         </div>
       </div>
+
       <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop:6 }}>
         <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8,
           border:'1px solid #e2e8f0', background:'white', cursor:'pointer', fontSize:13, color:'#64748b' }}>Cancel</button>
@@ -121,31 +119,116 @@ function TaskForm({ initial, onSave, onClose }) {
 const miniNavBtn = { background:'none', border:'1px solid #e2e8f0', borderRadius:6,
   padding:'3px 8px', cursor:'pointer', fontSize:11, color:BRAND }
 
-// ── Task card ────────────────────────────────────────────────
-function TaskCard({ task, onStatusChange, onEdit, onDelete }) {
+// ── Duplicate modal — pick target week ───────────────────────
+function DuplicateModal({ task, onDuplicate, onClose }) {
+  const today      = new Date()
+  const [dupYear,  setDupYear]  = useState(today.getFullYear())
+  const [dupMonth, setDupMonth] = useState(today.getMonth())
+  const [dupWeek,  setDupWeek]  = useState(getWeekOfMonth(today))
+  const totalWeeks = getWeeksInMonth(dupYear, dupMonth)
+
+  function handleDuplicate() {
+    const createdAt = weekToDate(dupYear, dupMonth, dupWeek) + 'T00:00:00.000Z'
+    onDuplicate({ ...task, id: uid(), createdAt })
+    onClose()
+  }
+
+  return (
+    <Modal title="Duplicate Task to Week" onClose={onClose}>
+      <div style={{ marginBottom:14 }}>
+        <div style={{ fontSize:13, color:'#64748b', marginBottom:14 }}>
+          Duplicating: <strong style={{ color:BRAND }}>{task.name}</strong>
+        </div>
+        <label style={{ display:'block', fontSize:11, fontWeight:700, color:'#64748b',
+          marginBottom:6, textTransform:'uppercase', letterSpacing:'0.06em' }}>Target Week</label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <button onClick={()=>{ if(dupMonth===0){setDupMonth(11);setDupYear(y=>y-1);setDupWeek(1)}else{setDupMonth(m=>m-1);setDupWeek(1)} }}
+              style={miniNavBtn}>◀</button>
+            <span style={{ fontSize:12, fontWeight:700, color:BRAND, minWidth:90, textAlign:'center' }}>
+              {MONTHS[dupMonth].slice(0,3)} {dupYear}
+            </span>
+            <button onClick={()=>{ if(dupMonth===11){setDupMonth(0);setDupYear(y=>y+1);setDupWeek(1)}else{setDupMonth(m=>m+1);setDupWeek(1)} }}
+              style={miniNavBtn}>▶</button>
+          </div>
+          <div style={{ display:'flex', gap:4 }}>
+            {Array.from({length:totalWeeks},(_,i)=>i+1).map(w=>(
+              <button key={w} onClick={()=>setDupWeek(w)}
+                style={{ padding:'5px 11px', borderRadius:7, border:'1px solid #e2e8f0',
+                  background: dupWeek===w ? BRAND : '#f8fafc',
+                  color:      dupWeek===w ? 'white' : '#374151',
+                  cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                W{w}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{ marginTop:8, fontSize:11, color:'#94a3b8' }}>
+          Target: <strong style={{ color:BRAND }}>{MONTHS[dupMonth]} {dupYear} — Week {dupWeek}</strong>
+        </div>
+      </div>
+      <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+        <button onClick={onClose} style={{ padding:'9px 18px', borderRadius:8,
+          border:'1px solid #e2e8f0', background:'white', cursor:'pointer', fontSize:13, color:'#64748b' }}>Cancel</button>
+        <button onClick={handleDuplicate}
+          style={{ padding:'9px 20px', borderRadius:8, border:'none',
+            background:BRAND, color:'white', cursor:'pointer', fontSize:13, fontWeight:700 }}>
+          ⧉ Duplicate
+        </button>
+      </div>
+    </Modal>
+  )
+}
+
+// ── Task card ─────────────────────────────────────────────────
+// Change 1: description hidden by default, shown on dropdown click
+// Change 2: duplicate button added
+function TaskCard({ task, onStatusChange, onEdit, onDelete, onDuplicate }) {
   const [expanded, setExpanded] = useState(false)
+
+  const hasDetails = task.overview ||
+    (task.sources||[]).filter(s=>s.url).length > 0 ||
+    task.remarks
+
   return (
     <div style={{ background:'white', border:'1px solid #e8eef8', borderRadius:10,
-      padding:'12px 14px', marginBottom:7, borderLeft:`3px solid ${BRAND}22` }}>
+      padding:'11px 13px', marginBottom:7, borderLeft:`3px solid ${BRAND}22` }}>
+
+      {/* Card header — always visible */}
       <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
             <span style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>{task.name}</span>
             <StatusBadge status={task.status} onChange={s=>onStatusChange(task.id,s)} editable/>
           </div>
-          {task.overview && <p style={{ margin:'4px 0 0', fontSize:12, color:'#64748b', lineHeight:1.5 }}>{task.overview}</p>}
+          {/* Description is intentionally hidden here — visible only when expanded */}
         </div>
         <div style={{ display:'flex', gap:3, flexShrink:0 }}>
-          <button onClick={()=>setExpanded(v=>!v)} style={iconBtn('#e8eef8',BRAND)}>{expanded?'▲':'▼'}</button>
-          <button onClick={()=>onEdit(task)}        style={iconBtn('#f0fdf4','#16a34a')}>✎</button>
-          <button onClick={()=>onDelete(task.id)}   style={iconBtn('#fef2f2','#dc2626')}>✕</button>
+          {hasDetails && (
+            <button onClick={()=>setExpanded(v=>!v)} title="Toggle details"
+              style={iconBtn('#e8eef8', BRAND)}>{expanded ? '▲' : '▼'}</button>
+          )}
+          <button onClick={()=>onDuplicate(task)} title="Duplicate to another week"
+            style={iconBtn('#f0f4ff', '#6366f1')}>⧉</button>
+          <button onClick={()=>onEdit(task)}   title="Edit"   style={iconBtn('#f0fdf4','#16a34a')}>✎</button>
+          <button onClick={()=>onDelete(task.id)} title="Delete" style={iconBtn('#fef2f2','#dc2626')}>✕</button>
         </div>
       </div>
+
+      {/* Expanded details — overview, sources, remarks */}
       {expanded && (
         <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid #f1f5f9' }}>
+          {task.overview && (
+            <div style={{ marginBottom:8 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase',
+                letterSpacing:'0.07em', marginBottom:3 }}>Overview</div>
+              <p style={{ margin:0, fontSize:12, color:'#475569', lineHeight:1.6 }}>{task.overview}</p>
+            </div>
+          )}
           {(task.sources||[]).filter(s=>s.url).length>0 && (
             <div style={{ marginBottom:7 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:4 }}>Sources</div>
+              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase',
+                letterSpacing:'0.07em', marginBottom:4 }}>Sources</div>
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                 {(task.sources||[]).filter(s=>s.url).map((s,i)=>(
                   <a key={i} href={s.url} target="_blank" rel="noreferrer"
@@ -159,7 +242,8 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete }) {
           )}
           {task.remarks && (
             <div>
-              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:3 }}>Remarks</div>
+              <div style={{ fontSize:10, fontWeight:700, color:'#94a3b8', textTransform:'uppercase',
+                letterSpacing:'0.07em', marginBottom:2 }}>Remarks</div>
               <p style={{ margin:0, fontSize:12, color:'#475569' }}>{task.remarks}</p>
             </div>
           )}
@@ -169,15 +253,17 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete }) {
   )
 }
 
-// ── Main module ──────────────────────────────────────────────
+// ── Main module ───────────────────────────────────────────────
 export default function StatusTracker({ tasks, setTasks }) {
   const now = new Date()
-  const [year,     setYear]     = useState(now.getFullYear())
-  const [month,    setMonth]    = useState(now.getMonth())
-  const [week,     setWeek]     = useState(1)
-  const [view,     setView]     = useState('board')
-  const [showForm, setShowForm] = useState(false)
-  const [editing,  setEditing]  = useState(null)
+  // Change 4: default week is the CURRENT real week, stays on selected week
+  const [year,        setYear]        = useState(now.getFullYear())
+  const [month,       setMonth]       = useState(now.getMonth())
+  const [week,        setWeek]        = useState(getWeekOfMonth(now))
+  const [view,        setView]        = useState('board')
+  const [showForm,    setShowForm]    = useState(false)
+  const [editing,     setEditing]     = useState(null)
+  const [duplicating, setDuplicating] = useState(null) // task being duplicated
   const totalWeeks = getWeeksInMonth(year, month)
 
   const weekTasks = tasks.filter(t => {
@@ -186,7 +272,10 @@ export default function StatusTracker({ tasks, setTasks }) {
     return d.getFullYear()===year && d.getMonth()===month && getWeekOfMonth(d)===week
   })
 
-  const grouped = STATUS_OPTIONS.reduce((acc,s)=>{ acc[s.key]=weekTasks.filter(t=>t.status===s.key); return acc }, {})
+  const grouped = STATUS_OPTIONS.reduce((acc,s)=>{
+    acc[s.key] = weekTasks.filter(t=>t.status===s.key)
+    return acc
+  }, {})
 
   function addTask(form) {
     const t = { ...form, id:uid() }
@@ -204,12 +293,25 @@ export default function StatusTracker({ tasks, setTasks }) {
     if(!confirm('Delete this task?')) return
     setTasks(prev=>{ const next=prev.filter(t=>t.id!==id); saveData(KEYS.tasks,next); return next })
   }
+  // Change 2: duplicate task — adds a copy with new id and target week's createdAt
+  function duplicateTask(newTask) {
+    setTasks(prev=>{ const next=[...prev, newTask]; saveData(KEYS.tasks,next); return next })
+  }
+
+  // Change 4: when month changes, try to preserve the selected week
+  // if it exists in the new month, otherwise fall back to week 1
+  function handleMonthChange(y, m) {
+    setYear(y)
+    setMonth(m)
+    const newTotalWeeks = getWeeksInMonth(y, m)
+    setWeek(w => Math.min(w, newTotalWeeks))
+  }
 
   return (
     <div>
       {/* Toolbar */}
       <div style={{ display:'flex', flexWrap:'wrap', gap:8, alignItems:'center', marginBottom:16 }}>
-        <MonthYearPicker year={year} month={month} onChange={(y,m)=>{ setYear(y); setMonth(m); setWeek(1) }}/>
+        <MonthYearPicker year={year} month={month} onChange={handleMonthChange}/>
         <div style={{ display:'flex', gap:4 }}>
           {Array.from({length:totalWeeks},(_,i)=>i+1).map(w=>(
             <button key={w} onClick={()=>setWeek(w)}
@@ -235,12 +337,12 @@ export default function StatusTracker({ tasks, setTasks }) {
         </button>
       </div>
 
-      {/* Status summary */}
+      {/* Status summary chips */}
       <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:16 }}>
         {STATUS_OPTIONS.map(s=>(
           <div key={s.key} style={{ background:s.bg, color:s.color, border:`1px solid ${s.color}33`,
             borderRadius:20, padding:'2px 10px', fontSize:11, fontWeight:700 }}>
-            {s.label}: {grouped[s.key].length}
+            {s.label}: {grouped[s.key]?.length ?? 0}
           </div>
         ))}
         <span style={{ marginLeft:'auto', fontSize:12, color:'#94a3b8', alignSelf:'center' }}>
@@ -248,21 +350,29 @@ export default function StatusTracker({ tasks, setTasks }) {
         </span>
       </div>
 
-      {/* Board */}
+      {/* Board view */}
       {view==='board' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))', gap:12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
           {STATUS_OPTIONS.map(s=>(
             <div key={s.key}>
               <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
                 <div style={{ width:8, height:8, borderRadius:'50%', background:s.color }}/>
-                <span style={{ fontSize:11, fontWeight:700, color:'#64748b', textTransform:'uppercase', letterSpacing:'0.07em' }}>{s.label}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:'#64748b',
+                  textTransform:'uppercase', letterSpacing:'0.07em' }}>{s.label}</span>
                 <span style={{ marginLeft:'auto', fontSize:10, background:s.bg, color:s.color,
-                  borderRadius:10, padding:'1px 6px', fontWeight:700 }}>{grouped[s.key].length}</span>
+                  borderRadius:10, padding:'1px 6px', fontWeight:700 }}>
+                  {grouped[s.key]?.length ?? 0}
+                </span>
               </div>
-              {grouped[s.key].map(t=>(
-                <TaskCard key={t.id} task={t} onStatusChange={updateStatus} onEdit={setEditing} onDelete={deleteTask}/>
+              {(grouped[s.key]||[]).map(t=>(
+                <TaskCard key={t.id} task={t}
+                  onStatusChange={updateStatus}
+                  onEdit={setEditing}
+                  onDelete={deleteTask}
+                  onDuplicate={setDuplicating}
+                />
               ))}
-              {grouped[s.key].length===0 && (
+              {(grouped[s.key]||[]).length===0 && (
                 <div style={{ border:'1.5px dashed #e2e8f0', borderRadius:10, padding:'16px 0',
                   textAlign:'center', color:'#cbd5e1', fontSize:12 }}>Empty</div>
               )}
@@ -271,7 +381,7 @@ export default function StatusTracker({ tasks, setTasks }) {
         </div>
       )}
 
-      {/* Table */}
+      {/* Table view */}
       {view==='table' && (
         <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:560 }}>
@@ -300,7 +410,9 @@ export default function StatusTracker({ tasks, setTasks }) {
                   <td style={{ padding:'9px 12px' }}>
                     {(t.sources||[]).filter(s=>s.url).map((s,j)=>(
                       <a key={j} href={s.url} target="_blank" rel="noreferrer"
-                        style={{ display:'block', color:BRAND, fontSize:11, whiteSpace:'nowrap' }}>🔗 {s.label||'Link'}</a>
+                        style={{ display:'block', color:BRAND, fontSize:11, whiteSpace:'nowrap' }}>
+                        🔗 {s.label||'Link'}
+                      </a>
                     ))}
                   </td>
                   <td style={{ padding:'9px 12px', color:'#64748b', maxWidth:140 }}>
@@ -308,6 +420,7 @@ export default function StatusTracker({ tasks, setTasks }) {
                   </td>
                   <td style={{ padding:'9px 12px' }}>
                     <div style={{ display:'flex', gap:4 }}>
+                      <button onClick={()=>setDuplicating(t)} title="Duplicate" style={iconBtn('#f0f4ff','#6366f1')}>⧉</button>
                       <button onClick={()=>setEditing(t)}     style={iconBtn('#f0fdf4','#16a34a')}>✎</button>
                       <button onClick={()=>deleteTask(t.id)}  style={iconBtn('#fef2f2','#dc2626')}>✕</button>
                     </div>
@@ -319,8 +432,24 @@ export default function StatusTracker({ tasks, setTasks }) {
         </div>
       )}
 
-      {showForm && <Modal title="Add New Task"  onClose={()=>setShowForm(false)}><TaskForm onSave={addTask}  onClose={()=>setShowForm(false)}/></Modal>}
-      {editing   && <Modal title="Edit Task"    onClose={()=>setEditing(null)}>  <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/></Modal>}
+      {/* Modals */}
+      {showForm && (
+        <Modal title="Add New Task" onClose={()=>setShowForm(false)}>
+          <TaskForm onSave={addTask} onClose={()=>setShowForm(false)}/>
+        </Modal>
+      )}
+      {editing && (
+        <Modal title="Edit Task" onClose={()=>setEditing(null)}>
+          <TaskForm initial={editing} onSave={saveEdit} onClose={()=>setEditing(null)}/>
+        </Modal>
+      )}
+      {duplicating && (
+        <DuplicateModal
+          task={duplicating}
+          onDuplicate={duplicateTask}
+          onClose={()=>setDuplicating(null)}
+        />
+      )}
     </div>
   )
 }
