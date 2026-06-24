@@ -11,10 +11,11 @@ export const BRAND_PALE = '#e8eef8'
 export const BRAND_GOLD = '#f5c518'
 
 export const STATUS_OPTIONS = [
-  { key:'pending',     label:'Pending',     color:'#94a3b8', bg:'#f1f5f9' },
+  { key:'todo',        label:'To Do',       color:'#7c3aed', bg:'#f5f3ff' },
   { key:'in_progress', label:'In Progress', color:'#2563eb', bg:'#eff6ff' },
   { key:'in_review',   label:'In Review',   color:'#d97706', bg:'#fffbeb' },
   { key:'blocked',     label:'Blocked',     color:'#dc2626', bg:'#fef2f2' },
+  { key:'pending',     label:'Pending',     color:'#94a3b8', bg:'#f1f5f9' },
   { key:'done',        label:'Done',        color:'#16a34a', bg:'#f0fdf4' },
 ]
 

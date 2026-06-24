@@ -27,7 +27,7 @@ function TaskForm({ initial, onSave, onClose }) {
   const todayMonth = today.getMonth()
   const todayWeek  = getWeekOfMonth(today)
 
-  const empty = { name:'', overview:'', sources:[], remarks:'', status:'pending' }
+  const empty = { name:'', overview:'', sources:[], remarks:'', status:'todo' }
   const [form,      setForm]      = useState(initial || empty)
   const [taskYear,  setTaskYear]  = useState(
     initial?.createdAt ? new Date(initial.createdAt).getFullYear() : todayYear
