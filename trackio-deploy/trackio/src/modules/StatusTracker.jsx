@@ -181,8 +181,9 @@ function DuplicateModal({ task, onDuplicate, onClose }) {
 }
 
 // ── Task card ─────────────────────────────────────────────────
-// Change 1: description hidden by default, shown on dropdown click
-// Change 2: duplicate button added
+// Row 1: action icons (right-aligned)
+// Row 2: task name + status badge
+// Expanded: overview, sources, remarks
 function TaskCard({ task, onStatusChange, onEdit, onDelete, onDuplicate }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -192,27 +193,27 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete, onDuplicate }) {
 
   return (
     <div style={{ background:'white', border:'1px solid #e8eef8', borderRadius:10,
-      padding:'11px 13px', marginBottom:7, borderLeft:`3px solid ${BRAND}22` }}>
+      padding:'10px 12px', marginBottom:7, borderLeft:`3px solid ${BRAND}22` }}>
 
-      {/* Card header — always visible */}
-      <div style={{ display:'flex', alignItems:'flex-start', gap:8 }}>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-            <span style={{ fontWeight:700, fontSize:13, color:'#1e293b' }}>{task.name}</span>
-            <StatusBadge status={task.status} onChange={s=>onStatusChange(task.id,s)} editable/>
-          </div>
-          {/* Description is intentionally hidden here — visible only when expanded */}
-        </div>
-        <div style={{ display:'flex', gap:3, flexShrink:0 }}>
-          {hasDetails && (
-            <button onClick={()=>setExpanded(v=>!v)} title="Toggle details"
-              style={iconBtn('#e8eef8', BRAND)}>{expanded ? '▲' : '▼'}</button>
-          )}
-          <button onClick={()=>onDuplicate(task)} title="Duplicate to another week"
-            style={iconBtn('#f0f4ff', '#6366f1')}>⧉</button>
-          <button onClick={()=>onEdit(task)}   title="Edit"   style={iconBtn('#f0fdf4','#16a34a')}>✎</button>
-          <button onClick={()=>onDelete(task.id)} title="Delete" style={iconBtn('#fef2f2','#dc2626')}>✕</button>
-        </div>
+      {/* Row 1 — action icons, right-aligned */}
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:3, marginBottom:7 }}>
+        {hasDetails && (
+          <button onClick={()=>setExpanded(v=>!v)} title="Toggle details"
+            style={iconBtn('#e8eef8', BRAND)}>{expanded ? '▲' : '▼'}</button>
+        )}
+        <button onClick={()=>onDuplicate(task)} title="Duplicate to another week"
+          style={iconBtn('#f0f4ff', '#6366f1')}>⧉</button>
+        <button onClick={()=>onEdit(task)}      title="Edit"
+          style={iconBtn('#f0fdf4','#16a34a')}>✎</button>
+        <button onClick={()=>onDelete(task.id)} title="Delete"
+          style={iconBtn('#fef2f2','#dc2626')}>✕</button>
+      </div>
+
+      {/* Row 2 — task name + status badge */}
+      <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
+        <span style={{ fontWeight:700, fontSize:13, color:'#1e293b', flex:1, minWidth:0,
+          wordBreak:'break-word' }}>{task.name}</span>
+        <StatusBadge status={task.status} onChange={s=>onStatusChange(task.id,s)} editable/>
       </div>
 
       {/* Expanded details — overview, sources, remarks */}
@@ -350,34 +351,41 @@ export default function StatusTracker({ tasks, setTasks }) {
         </span>
       </div>
 
-      {/* Board view */}
+      {/* Board view — all status columns in one horizontal scrollable row */}
       {view==='board' && (
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-          {STATUS_OPTIONS.map(s=>(
-            <div key={s.key}>
-              <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
-                <div style={{ width:8, height:8, borderRadius:'50%', background:s.color }}/>
-                <span style={{ fontSize:11, fontWeight:700, color:'#64748b',
-                  textTransform:'uppercase', letterSpacing:'0.07em' }}>{s.label}</span>
-                <span style={{ marginLeft:'auto', fontSize:10, background:s.bg, color:s.color,
-                  borderRadius:10, padding:'1px 6px', fontWeight:700 }}>
-                  {grouped[s.key]?.length ?? 0}
-                </span>
+        <div style={{ overflowX:'auto', WebkitOverflowScrolling:'touch', paddingBottom:8 }}>
+          <div style={{ display:'flex', gap:12, minWidth:'max-content', alignItems:'flex-start' }}>
+            {STATUS_OPTIONS.map(s=>(
+              <div key={s.key} style={{ width:220, flexShrink:0 }}>
+                {/* Column header */}
+                <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8,
+                  padding:'6px 10px', background:s.bg, borderRadius:8,
+                  border:`1px solid ${s.color}33` }}>
+                  <div style={{ width:8, height:8, borderRadius:'50%', background:s.color, flexShrink:0 }}/>
+                  <span style={{ fontSize:11, fontWeight:700, color:s.color,
+                    textTransform:'uppercase', letterSpacing:'0.07em', flex:1 }}>{s.label}</span>
+                  <span style={{ fontSize:11, background:'white', color:s.color,
+                    borderRadius:10, padding:'1px 7px', fontWeight:800,
+                    border:`1px solid ${s.color}44` }}>
+                    {grouped[s.key]?.length ?? 0}
+                  </span>
+                </div>
+                {/* Cards */}
+                {(grouped[s.key]||[]).map(t=>(
+                  <TaskCard key={t.id} task={t}
+                    onStatusChange={updateStatus}
+                    onEdit={setEditing}
+                    onDelete={deleteTask}
+                    onDuplicate={setDuplicating}
+                  />
+                ))}
+                {(grouped[s.key]||[]).length===0 && (
+                  <div style={{ border:'1.5px dashed #e2e8f0', borderRadius:10, padding:'20px 0',
+                    textAlign:'center', color:'#cbd5e1', fontSize:12 }}>Empty</div>
+                )}
               </div>
-              {(grouped[s.key]||[]).map(t=>(
-                <TaskCard key={t.id} task={t}
-                  onStatusChange={updateStatus}
-                  onEdit={setEditing}
-                  onDelete={deleteTask}
-                  onDuplicate={setDuplicating}
-                />
-              ))}
-              {(grouped[s.key]||[]).length===0 && (
-                <div style={{ border:'1.5px dashed #e2e8f0', borderRadius:10, padding:'16px 0',
-                  textAlign:'center', color:'#cbd5e1', fontSize:12 }}>Empty</div>
-              )}
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
 
