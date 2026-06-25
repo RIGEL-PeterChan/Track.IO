@@ -209,10 +209,14 @@ function TaskCard({ task, onStatusChange, onEdit, onDelete, onDuplicate }) {
           style={iconBtn('#fef2f2','#dc2626')}>✕</button>
       </div>
 
-      {/* Row 2 — task name + status badge */}
-      <div style={{ display:'flex', alignItems:'center', gap:7, flexWrap:'wrap' }}>
-        <span style={{ fontWeight:700, fontSize:13, color:'#1e293b', flex:1, minWidth:0,
+      {/* Row 2 — task name */}
+      <div style={{ marginBottom:6 }}>
+        <span style={{ fontWeight:700, fontSize:13, color:'#1e293b',
           wordBreak:'break-word' }}>{task.name}</span>
+      </div>
+
+      {/* Row 3 — status badge */}
+      <div>
         <StatusBadge status={task.status} onChange={s=>onStatusChange(task.id,s)} editable/>
       </div>
 
